@@ -1,0 +1,21 @@
+---
+
+- hosts:  source_hosts
+
+  tasks:
+  - name: Split source file into partitions
+    command: chdir={{source|dirname}} split -n l/{{ numProcs*groups['target_hosts']|length }} --numeric-suffixes -a 3 {{source|basename }} {{source|basename }}
+
+
+- hosts: target_hosts
+
+  sudo: True
+
+  tasks:
+  - name: Create data dir, if needed
+    file: dest={{destination}} state=directory mode=775 group=damsl
+
+  - name: Copy files to destination machines
+    copy: src={{source}}{{ "%03d" | format(item|int)}} dest={{destination}}/{{source|basename }}{{ "%03d" | format(item|int)}}
+    with_sequence: start=0 end={{((numProcs)*groups['target_hosts']|length)-1}} 
+    when: ((item | int) // (numProcs|int)) == peer
