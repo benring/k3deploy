@@ -1,4 +1,10 @@
 ---
+#  K3 File Prep play
+#	1. Split source file into segments
+#	2. Copies each group of files to target machines
+#	3. Clean up source segements in source folder
+#
+#	NOTE: File names are re-numberred on target machines. Each set is ordered 0..numProcs
 
 - hosts:  source_hosts
 
@@ -19,7 +25,7 @@
       setup_dir: /tmp/k3_{{app_name}}/setup/
       data_dir: /tmp/k3_{{app_name}}/data/
       docker_image: k3_{{app_name}}
-      results_dir: /tmp/k3_{{app_name}} # Local side. 
+      results_dir: /tmp/k3_results/k3_{{app_name}} # Local side. 
 
   # Copy over files
   - name: Create data dir, if needed
@@ -63,9 +69,6 @@
   - name: Build the Docker image for this app
     shell: docker build -t {{docker_image}} {{setup_dir}}
  
-  #- name: Run the binary in a docker container
-  #  shell: docker run --net=host --name="{{docker_image}}_{{40000 + (item|int)}}" -v {{data_dir}}{{40000 + (item|int)}}:/app_data -v /local:/local {{docker_image}} /run_k3.sh 
-  #  with_sequence: start=0 end={{numProcs-1}}
   - name: Run the binary in a docker container
     shell: docker run -d --net=host --name="{{docker_image}}_{{40000 + (item|int)}}" -v {{data_dir}}{{40000 + (item|int)}}:/app_data -v /local:/local {{docker_image}} run_k3 -p 'peers:{{peers}},me:<{{ip}}:{{40000 + (item|int)}}>,{% for key, value in k3_bindings.iteritems()|list -%}{{key}}:{{value}}{% if not loop.last %},{% endif %} {%- endfor %}, rankings_file:"{{destination}}/{{source|basename}}{{"%03d" | format(item|int)}}"'
     with_sequence: start=0 end={{numProcs-1}}
@@ -76,10 +79,20 @@
 
   - name: Create local directories for the results
     local_action: shell mkdir -p {{results_dir}}
-
-  - name: Retreive the results from each host
     sudo: no
+    
+  - name: Retreive the results from each host
+    sudo: no 
     synchronize: mode=pull src={{data_dir}}  dest={{results_dir}}/{{ip}}
 
   - name: Cleanup remote folders
     shell: rm -rf {{data_dir}} {{setup_dir}}
+    with_sequence: start=0 end={{numProcs-1}}
+
+
+- hosts: source_hosts
+
+  tasks:
+  - name: Clean up source file segments
+    command: rm -f {{source}}{{item}}
+    with_sequence: start=0 end={{((numProcs)*groups['target_hosts']|length)-1}} format=%03d
