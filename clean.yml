@@ -1,0 +1,19 @@
+---
+#  K3 File Prep play
+#	1. Split source file into segments
+#	2. Copies each group of files to target machines
+#	3. Clean up source segements in source folder
+#
+#	NOTE: File names are re-numberred on target machines. Each set is ordered 0..numProcs
+
+- hosts: target_hosts
+
+  sudo: True
+
+  tasks:
+  - name: Clean up source files segments
+    command: rm -f {{destination}}/{{source|basename}}{{item}}
+    with_sequence: start=0 end={{numProcs-1}} format=%03d
+
+  - name: Remove destination dir
+    command: rmdir {{destination}}
